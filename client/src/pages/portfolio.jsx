@@ -7,8 +7,6 @@ const NAV_LINKS = [
   { label: 'Contact', path: '/#contact' },
 ]
 
-const CATEGORIES = ['All', 'Furniture', 'Automotive', 'Footwear', 'Accessories', 'Apparel']
-
 const HOURS = [
   { day: 'Mon – Fri', time: '9:00 AM – 6:00 PM' },
   { day: 'Saturday', time: '10:00 AM – 4:00 PM' },
@@ -150,6 +148,7 @@ function PortfolioCard({ item, delay }) {
 export default function Portfolio() {
   const [scrolled, setScrolled] = useState(false)
   const [activeCategory, setActiveCategory] = useState('All')
+  const [categories, setCategories] = useState(['All'])
   const [items, setItems] = useState([])
   const [page, setPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
@@ -160,6 +159,24 @@ export default function Portfolio() {
     const onScroll = () => setScrolled(window.scrollY > 40)
     window.addEventListener('scroll', onScroll)
     return () => window.removeEventListener('scroll', onScroll)
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/categories`)
+        const json = await res.json()
+        const data = Array.isArray(json) ? json : (json.data ?? [])
+        const names = data
+          .map((c) => c?.name)
+          .filter(Boolean)
+        if (!cancelled) setCategories(['All', ...names])
+      } catch (err) {
+        console.error('Failed to fetch categories:', err)
+      }
+    })()
+    return () => { cancelled = true }
   }, [])
 
   const fetchPortfolio = async (cat, pg, append = false) => {
@@ -280,7 +297,7 @@ export default function Portfolio() {
         display: 'flex', justifyContent: 'center',
       }}>
         <div className="filter-bar" style={{ display: 'flex', gap: 10 }}>
-          {CATEGORIES.map(cat => (
+          {categories.map(cat => (
             <button
               key={cat}
               className="filter-btn"
