@@ -17,8 +17,8 @@ async function deletePortfolio(id) {
   return res.data
 }
 
-async function updatePortfolio({ id, title, description }) {
-  const res = await api.put(`/api/portfolio/${id}`, { title, description })
+async function updatePortfolio({ id, data }) {
+  const res = await api.put(`/api/portfolio/${id}`, data)
   return res.data
 }
 
@@ -37,8 +37,8 @@ async function deleteCategory(id) {
   return res.data
 }
 
-async function updateCategory({ id, name, description }) {
-  const res = await api.put(`/api/categories/${id}`, { name, description })
+async function updateCategory({ id, data }) {
+  const res = await api.put(`/api/categories/${id}`, data)
   return res.data
 }
 
@@ -123,6 +123,14 @@ function Icon({ name }) {
       </svg>
     )
   }
+  if (name === 'camera') {
+    return (
+      <svg {...common}>
+        <path {...stroke} d="M20 19a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2-2H9L7 7H4a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h16Z" />
+        <path {...stroke} d="M12 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" />
+      </svg>
+    )
+  }
   if (name === 'edit') {
     return (
       <svg {...common}>
@@ -147,7 +155,6 @@ export default function Admin() {
   const [editingWorkId, setEditingWorkId] = useState(null)
   const [editWorkForm, setEditWorkForm] = useState({ title: '', description: '' })
   const [savingWorkId, setSavingWorkId] = useState(null)
-  const [expandedWorkIds, setExpandedWorkIds] = useState(() => new Set())
 
   const styles = useMemo(() => {
     const gold = '#c8902a'
@@ -240,6 +247,7 @@ export default function Admin() {
       await qc.invalidateQueries({ queryKey: ['categories'] })
       setToast({ type: 'success', text: 'Category updated.' })
       setEditingCategoryId(null)
+      resetEditCategoryImage()
     },
     onError: (e) => setToast({ type: 'error', text: e?.message || 'Failed to update category.' }),
     onSettled: () => setSavingCatId(null),
@@ -285,6 +293,7 @@ export default function Admin() {
       })
       setToast({ type: 'success', text: 'Work updated.' })
       setEditingWorkId(null)
+      resetEditWorkImages()
     },
     onError: (e) => setToast({ type: 'error', text: e?.message || 'Failed to update work.' }),
     onSettled: () => setSavingWorkId(null),
@@ -303,6 +312,11 @@ export default function Admin() {
   const [categoryImageFile, setCategoryImageFileState] = useState(null)
   const [categoryImagePreviewUrl, setCategoryImagePreviewUrl] = useState(null)
 
+  const editCategoryImageInputRef = useRef(null)
+  const editCategoryImageObjectUrlRef = useRef(null)
+  const [editCategoryImageFile, setEditCategoryImageFileState] = useState(null)
+  const [editCategoryImagePreviewUrl, setEditCategoryImagePreviewUrl] = useState(null)
+
   const beforeInputRef = useRef(null)
   const afterInputRef = useRef(null)
   const beforeObjectUrlRef = useRef(null)
@@ -310,11 +324,23 @@ export default function Admin() {
   const [beforePreviewUrl, setBeforePreviewUrl] = useState(null)
   const [afterPreviewUrl, setAfterPreviewUrl] = useState(null)
 
+  const editWorkBeforeInputRef = useRef(null)
+  const editWorkAfterInputRef = useRef(null)
+  const editWorkBeforeObjectUrlRef = useRef(null)
+  const editWorkAfterObjectUrlRef = useRef(null)
+  const [editWorkBeforeFile, setEditWorkBeforeFileState] = useState(null)
+  const [editWorkAfterFile, setEditWorkAfterFileState] = useState(null)
+  const [editWorkBeforePreviewUrl, setEditWorkBeforePreviewUrl] = useState(null)
+  const [editWorkAfterPreviewUrl, setEditWorkAfterPreviewUrl] = useState(null)
+
   useEffect(() => {
     return () => {
       if (beforeObjectUrlRef.current) URL.revokeObjectURL(beforeObjectUrlRef.current)
       if (afterObjectUrlRef.current) URL.revokeObjectURL(afterObjectUrlRef.current)
       if (categoryImageObjectUrlRef.current) URL.revokeObjectURL(categoryImageObjectUrlRef.current)
+      if (editCategoryImageObjectUrlRef.current) URL.revokeObjectURL(editCategoryImageObjectUrlRef.current)
+      if (editWorkBeforeObjectUrlRef.current) URL.revokeObjectURL(editWorkBeforeObjectUrlRef.current)
+      if (editWorkAfterObjectUrlRef.current) URL.revokeObjectURL(editWorkAfterObjectUrlRef.current)
     }
   }, [])
 
@@ -349,6 +375,88 @@ export default function Admin() {
   function clearCategoryImage() {
     setCategoryImageFile(null)
     if (categoryImageInputRef.current) categoryImageInputRef.current.value = ''
+  }
+
+  function setEditCategoryImageFile(file) {
+    const v = validateCategoryImage(file)
+    if (!v.ok) {
+      setToast({ type: 'error', text: v.message })
+      return
+    }
+    setEditCategoryImageFileState(file || null)
+    if (editCategoryImageObjectUrlRef.current) URL.revokeObjectURL(editCategoryImageObjectUrlRef.current)
+    if (!file) {
+      editCategoryImageObjectUrlRef.current = null
+      setEditCategoryImagePreviewUrl(null)
+      return
+    }
+    const url = URL.createObjectURL(file)
+    editCategoryImageObjectUrlRef.current = url
+    setEditCategoryImagePreviewUrl(url)
+  }
+
+  function resetEditCategoryImage() {
+    if (editCategoryImageObjectUrlRef.current) URL.revokeObjectURL(editCategoryImageObjectUrlRef.current)
+    editCategoryImageObjectUrlRef.current = null
+    setEditCategoryImageFileState(null)
+    setEditCategoryImagePreviewUrl(null)
+    if (editCategoryImageInputRef.current) editCategoryImageInputRef.current.value = ''
+  }
+
+  function validateWorkImage(file) {
+    if (!file) return { ok: true }
+    if (file.size > 15 * 1024 * 1024) return { ok: false, message: 'Image must be <= 15MB.' }
+    if (file.type && !String(file.type).startsWith('image/')) return { ok: false, message: 'Please select an image file.' }
+    return { ok: true }
+  }
+
+  function setEditWorkBeforeFile(file) {
+    const v = validateWorkImage(file)
+    if (!v.ok) {
+      setToast({ type: 'error', text: v.message })
+      return
+    }
+    setEditWorkBeforeFileState(file || null)
+    if (editWorkBeforeObjectUrlRef.current) URL.revokeObjectURL(editWorkBeforeObjectUrlRef.current)
+    if (!file) {
+      editWorkBeforeObjectUrlRef.current = null
+      setEditWorkBeforePreviewUrl(null)
+      return
+    }
+    const url = URL.createObjectURL(file)
+    editWorkBeforeObjectUrlRef.current = url
+    setEditWorkBeforePreviewUrl(url)
+  }
+
+  function setEditWorkAfterFile(file) {
+    const v = validateWorkImage(file)
+    if (!v.ok) {
+      setToast({ type: 'error', text: v.message })
+      return
+    }
+    setEditWorkAfterFileState(file || null)
+    if (editWorkAfterObjectUrlRef.current) URL.revokeObjectURL(editWorkAfterObjectUrlRef.current)
+    if (!file) {
+      editWorkAfterObjectUrlRef.current = null
+      setEditWorkAfterPreviewUrl(null)
+      return
+    }
+    const url = URL.createObjectURL(file)
+    editWorkAfterObjectUrlRef.current = url
+    setEditWorkAfterPreviewUrl(url)
+  }
+
+  function resetEditWorkImages() {
+    if (editWorkBeforeObjectUrlRef.current) URL.revokeObjectURL(editWorkBeforeObjectUrlRef.current)
+    if (editWorkAfterObjectUrlRef.current) URL.revokeObjectURL(editWorkAfterObjectUrlRef.current)
+    editWorkBeforeObjectUrlRef.current = null
+    editWorkAfterObjectUrlRef.current = null
+    setEditWorkBeforeFileState(null)
+    setEditWorkAfterFileState(null)
+    setEditWorkBeforePreviewUrl(null)
+    setEditWorkAfterPreviewUrl(null)
+    if (editWorkBeforeInputRef.current) editWorkBeforeInputRef.current.value = ''
+    if (editWorkAfterInputRef.current) editWorkAfterInputRef.current.value = ''
   }
 
   function setBeforeFile(file) {
@@ -402,30 +510,25 @@ export default function Admin() {
   function startEditCategory(cat) {
     setEditingCategoryId(cat.id)
     setEditCategoryForm({ name: cat.name || '', description: cat.description || '' })
+    resetEditCategoryImage()
   }
 
   function cancelEditCategory() {
     setEditingCategoryId(null)
     setEditCategoryForm({ name: '', description: '' })
+    resetEditCategoryImage()
   }
 
   function startEditWork(work) {
     setEditingWorkId(work.id)
     setEditWorkForm({ title: work.title || '', description: work.description || '' })
+    resetEditWorkImages()
   }
 
   function cancelEditWork() {
     setEditingWorkId(null)
     setEditWorkForm({ title: '', description: '' })
-  }
-
-  function toggleWorkExpanded(id) {
-    setExpandedWorkIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
+    resetEditWorkImages()
   }
 
   function clearBefore() {
@@ -573,11 +676,12 @@ export default function Admin() {
         .admin-cat-text { flex: 1; min-width: 0; display: grid; gap: 6px; }
         .admin-cat-name { font-size: 16px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .admin-cat-desc { color: #A1A1A1; font-size: 14px; line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
-        .admin-cat-actions { flex-shrink: 0; display: flex; gap: 8px; align-items: flex-start; }
-        .admin-work-actions { flex-shrink: 0; display: flex; gap: 8px; align-items: flex-start; }
+        .admin-actions-row { display: flex; gap: 8px; align-items: center; justify-content: flex-end; }
+        .admin-cat-actions { flex-shrink: 0; display: flex; flex-direction: column; justify-content: flex-end; align-items: flex-end; }
+        .admin-work-actions { flex-shrink: 0; display: flex; flex-direction: column; justify-content: flex-end; align-items: flex-end; }
         .admin-work-desc { color: #A1A1A1; font-size: 14px; line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
-        .admin-work-desc.expanded { display: block; overflow: visible; -webkit-line-clamp: unset; }
-        .admin-work-readmore { margin-top: 4px; color: rgba(255,255,255,0.75); font-size: 12px; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+        .admin-img-change { position: absolute; top: 10px; right: 10px; width: 36px; height: 36px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.22); background: rgba(0,0,0,0.55); color: #fff; cursor: pointer; display: grid; place-items: center; }
+        .admin-img-change:hover { background: rgba(0,0,0,0.72); }
         @media (max-width: 900px) {
           .admin-shell { grid-template-columns: 1fr; }
           .admin-topbar { display: flex; }
@@ -664,29 +768,67 @@ export default function Admin() {
                   {!portfolioQuery.isLoading && !portfolioQuery.error && portfolioQuery.data?.length === 0 && (
                     <div style={{ color: '#cfcfcf' }}>No portfolio items yet.</div>
                   )}
-                  {(portfolioQuery.data || []).map((item) => (
-                    <div key={item.id} style={styles.portfolioCard}>
-                      <div style={{ display: 'flex', height: 363, position: 'relative' }}>
-                        <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
-                          <img
-                            src={item.before_url}
-                            alt="Before"
-                            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-                            loading="lazy"
-                          />
-                          <div style={{ position: 'absolute', inset: 0, background: 'rgba(23,23,23,0.20)' }} />
-                          <div className="admin-media-pill">BEFORE</div>
+                    {(portfolioQuery.data || []).map((item) => (
+                      <div key={item.id} style={styles.portfolioCard}>
+                        <div style={{ display: 'flex', height: 363, position: 'relative' }}>
+                          <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+                            <img
+                              src={editingWorkId === item.id && editWorkBeforePreviewUrl ? editWorkBeforePreviewUrl : item.before_url}
+                              alt="Before"
+                              style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                              loading="lazy"
+                            />
+                            <div style={{ position: 'absolute', inset: 0, background: 'rgba(23,23,23,0.20)' }} />
+                            <div className="admin-media-pill">BEFORE</div>
+                            {editingWorkId === item.id && (
+                              <>
+                                <input
+                                  ref={editWorkBeforeInputRef}
+                                  className="admin-file-input"
+                                  type="file"
+                                  accept="image/*"
+                                  onChange={(e) => setEditWorkBeforeFile(e.target.files?.[0] || null)}
+                                />
+                                <button
+                                  type="button"
+                                  className="admin-img-change"
+                                  onClick={() => editWorkBeforeInputRef.current?.click?.()}
+                                  aria-label="Change before image"
+                                >
+                                  <Icon name="camera" />
+                                </button>
+                              </>
+                            )}
+                          </div>
+                          <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+                            <img
+                              src={editingWorkId === item.id && editWorkAfterPreviewUrl ? editWorkAfterPreviewUrl : item.after_url}
+                              alt="After"
+                              style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                              loading="lazy"
+                            />
+                            <div className="admin-media-pill after">AFTER</div>
+                            {editingWorkId === item.id && (
+                              <>
+                                <input
+                                  ref={editWorkAfterInputRef}
+                                  className="admin-file-input"
+                                  type="file"
+                                  accept="image/*"
+                                  onChange={(e) => setEditWorkAfterFile(e.target.files?.[0] || null)}
+                                />
+                                <button
+                                  type="button"
+                                  className="admin-img-change"
+                                  onClick={() => editWorkAfterInputRef.current?.click?.()}
+                                  aria-label="Change after image"
+                                >
+                                  <Icon name="camera" />
+                                </button>
+                              </>
+                            )}
+                          </div>
                         </div>
-                        <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
-                          <img
-                            src={item.after_url}
-                            alt="After"
-                            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-                            loading="lazy"
-                          />
-                          <div className="admin-media-pill after">AFTER</div>
-                        </div>
-                      </div>
 
                       <div
                         style={{
@@ -695,7 +837,7 @@ export default function Admin() {
                           background: 'rgba(23,23,23,0.95)',
                           display: 'flex',
                           justifyContent: 'space-between',
-                          alignItems: 'flex-start',
+                          alignItems: 'stretch',
                           gap: 12,
                           minHeight: 140,
                         }}
@@ -732,79 +874,71 @@ export default function Admin() {
                               <div style={{ fontSize: 20, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                 {item.title}
                               </div>
-                              {item.description && (
-                                <div className={`admin-work-desc ${expandedWorkIds.has(item.id) ? 'expanded' : ''}`}>
-                                  {item.description}
-                                </div>
-                              )}
-                              {item.description && (
-                                <button
-                                  type="button"
-                                  className="admin-work-readmore"
-                                  onClick={() => toggleWorkExpanded(item.id)}
-                                >
-                                  {expandedWorkIds.has(item.id) ? 'Read less' : 'Read more'}
-                                </button>
-                              )}
+                              {item.description && <div className="admin-work-desc">{item.description}</div>}
                             </>
                           )}
                         </div>
                         <div className="admin-work-actions">
                           {editingWorkId === item.id ? (
                             <>
-                              <button
-                                type="button"
-                                style={{
-                                  ...styles.button,
-                                  opacity: updateWorkMutation.isPending ? 0.7 : 1,
-                                  cursor: updateWorkMutation.isPending ? 'not-allowed' : 'pointer',
-                                  whiteSpace: 'nowrap',
-                                }}
-                                onClick={() =>
-                                  updateWorkMutation.mutate({
-                                    id: item.id,
-                                    title: editWorkForm.title,
-                                    description: editWorkForm.description || null,
-                                  })
-                                }
-                                disabled={updateWorkMutation.isPending}
-                              >
-                                {item.id === savingWorkId ? 'Saving…' : 'Save'}
-                              </button>
-                              <button type="button" style={styles.buttonSubtle} onClick={cancelEditWork}>
-                                Cancel
-                              </button>
+                              <div className="admin-actions-row" style={{ marginTop: 'auto' }}>
+                                <button
+                                  type="button"
+                                  style={{
+                                    ...styles.button,
+                                    opacity: updateWorkMutation.isPending ? 0.7 : 1,
+                                    cursor: updateWorkMutation.isPending ? 'not-allowed' : 'pointer',
+                                    whiteSpace: 'nowrap',
+                                  }}
+                                  onClick={() => {
+                                    const fd = new FormData()
+                                    fd.append('title', editWorkForm.title)
+                                    fd.append('description', editWorkForm.description || '')
+                                    if (editWorkBeforeFile) fd.append('before', editWorkBeforeFile)
+                                    if (editWorkAfterFile) fd.append('after', editWorkAfterFile)
+                                    updateWorkMutation.mutate({ id: item.id, data: fd })
+                                  }}
+                                  disabled={updateWorkMutation.isPending}
+                                >
+                                  {item.id === savingWorkId ? 'Saving…' : 'Save'}
+                                </button>
+                                <button type="button" style={styles.buttonSubtle} onClick={cancelEditWork}>
+                                  Cancel
+                                </button>
+                              </div>
                             </>
                           ) : (
                             <>
-                              <button
-                                type="button"
-                                style={{
-                                  ...styles.buttonSubtle,
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: 8,
-                                  whiteSpace: 'nowrap',
-                                }}
-                                onClick={() => startEditWork(item)}
-                                disabled={deleteMutation.isPending || updateWorkMutation.isPending}
-                              >
-                                <Icon name="edit" />
-                                Edit
-                              </button>
-                              <button
-                                type="button"
-                                style={{
-                                  ...styles.buttonDanger,
-                                  opacity: deleteMutation.isPending ? 0.7 : 1,
-                                  cursor: deleteMutation.isPending ? 'not-allowed' : 'pointer',
-                                  whiteSpace: 'nowrap',
-                                }}
-                                onClick={() => deleteMutation.mutate(item.id)}
-                                disabled={deleteMutation.isPending || updateWorkMutation.isPending}
-                              >
-                                {item.id === deletingId ? 'Deleting…' : 'Delete'}
-                              </button>
+                              <div className="admin-actions-row" style={{ marginTop: 'auto' }}>
+                                <button
+                                  type="button"
+                                  style={{
+                                    ...styles.buttonSubtle,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: 8,
+                                    whiteSpace: 'nowrap',
+                                  }}
+                                  onClick={() => startEditWork(item)}
+                                  disabled={deleteMutation.isPending || updateWorkMutation.isPending}
+                                >
+                                  <Icon name="edit" />
+                                  Edit
+                                </button>
+                                <button
+                                  type="button"
+                                  style={{
+                                    ...styles.buttonDanger,
+                                    opacity: deleteMutation.isPending ? 0.7 : 1,
+                                    cursor: deleteMutation.isPending ? 'not-allowed' : 'pointer',
+                                    whiteSpace: 'nowrap',
+                                  }}
+                                  onClick={() => deleteMutation.mutate(item.id)}
+                                  disabled={deleteMutation.isPending || updateWorkMutation.isPending}
+                                >
+                                  {item.id === deletingId ? 'Deleting…' : 'Delete'}
+                                </button>
+                              </div>
                             </>
                           )}
                         </div>
@@ -1067,11 +1201,12 @@ export default function Admin() {
                             border: `1px solid ${styles.border}`,
                             background: 'rgba(0,0,0,0.25)',
                             flexShrink: 0,
+                            position: 'relative',
                           }}
                         >
-                          {cat.img_categories ? (
+                          {(editingCategoryId === cat.id && editCategoryImagePreviewUrl ? editCategoryImagePreviewUrl : cat.img_categories) ? (
                             <img
-                              src={cat.img_categories}
+                              src={editingCategoryId === cat.id && editCategoryImagePreviewUrl ? editCategoryImagePreviewUrl : cat.img_categories}
                               alt={cat.name}
                               style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
                               loading="lazy"
@@ -1080,6 +1215,26 @@ export default function Admin() {
                             <div style={{ width: '100%', height: '100%', display: 'grid', placeItems: 'center', color: 'rgba(255,255,255,0.65)' }}>
                               <Icon name="image" />
                             </div>
+                          )}
+                          {editingCategoryId === cat.id && (
+                            <>
+                              <input
+                                ref={editCategoryImageInputRef}
+                                className="admin-file-input"
+                                type="file"
+                                accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+                                onChange={(e) => setEditCategoryImageFile(e.target.files?.[0] || null)}
+                              />
+                              <button
+                                type="button"
+                                className="admin-img-change"
+                                style={{ width: 30, height: 30, top: 8, right: 8 }}
+                                onClick={() => editCategoryImageInputRef.current?.click?.()}
+                                aria-label="Change category image"
+                              >
+                                <Icon name="camera" />
+                              </button>
+                            </>
                           )}
                         </div>
 
@@ -1119,59 +1274,63 @@ export default function Admin() {
                       <div className="admin-cat-actions">
                         {editingCategoryId === cat.id ? (
                           <>
-                            <button
-                              type="button"
-                              style={{
-                                ...styles.button,
-                                opacity: updateCategoryMutation.isPending ? 0.7 : 1,
-                                cursor: updateCategoryMutation.isPending ? 'not-allowed' : 'pointer',
-                                whiteSpace: 'nowrap',
-                              }}
-                              onClick={() =>
-                                updateCategoryMutation.mutate({
-                                  id: cat.id,
-                                  name: editCategoryForm.name,
-                                  description: editCategoryForm.description || null,
-                                })
-                              }
-                              disabled={updateCategoryMutation.isPending}
-                            >
-                              {cat.id === savingCatId ? 'Saving…' : 'Save'}
-                            </button>
-                            <button type="button" style={styles.buttonSubtle} onClick={cancelEditCategory}>
-                              Cancel
-                            </button>
+                            <div className="admin-actions-row" style={{ marginTop: 'auto' }}>
+                              <button
+                                type="button"
+                                style={{
+                                  ...styles.button,
+                                  opacity: updateCategoryMutation.isPending ? 0.7 : 1,
+                                  cursor: updateCategoryMutation.isPending ? 'not-allowed' : 'pointer',
+                                  whiteSpace: 'nowrap',
+                                }}
+                                onClick={() => {
+                                  const fd = new FormData()
+                                  fd.append('name', editCategoryForm.name)
+                                  fd.append('description', editCategoryForm.description || '')
+                                  if (editCategoryImageFile) fd.append('image', editCategoryImageFile)
+                                  updateCategoryMutation.mutate({ id: cat.id, data: fd })
+                                }}
+                                disabled={updateCategoryMutation.isPending}
+                              >
+                                {cat.id === savingCatId ? 'Saving…' : 'Save'}
+                              </button>
+                              <button type="button" style={styles.buttonSubtle} onClick={cancelEditCategory}>
+                                Cancel
+                              </button>
+                            </div>
                           </>
                         ) : (
                           <>
-                            <button
-                              type="button"
-                              style={{
-                                ...styles.buttonSubtle,
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: 8,
-                                whiteSpace: 'nowrap',
-                              }}
-                              onClick={() => startEditCategory(cat)}
-                              disabled={deleteCategoryMutation.isPending || updateCategoryMutation.isPending}
-                            >
-                              <Icon name="edit" />
-                              Edit
-                            </button>
-                            <button
-                              type="button"
-                              style={{
-                                ...styles.buttonDanger,
-                                opacity: deleteCategoryMutation.isPending ? 0.7 : 1,
-                                cursor: deleteCategoryMutation.isPending ? 'not-allowed' : 'pointer',
-                                whiteSpace: 'nowrap',
-                              }}
-                              onClick={() => deleteCategoryMutation.mutate(cat.id)}
-                              disabled={deleteCategoryMutation.isPending || updateCategoryMutation.isPending}
-                            >
-                              {cat.id === deletingCatId ? 'Deleting…' : 'Delete'}
-                            </button>
+                            <div className="admin-actions-row" style={{ marginTop: 'auto' }}>
+                              <button
+                                type="button"
+                                style={{
+                                  ...styles.buttonSubtle,
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: 8,
+                                  whiteSpace: 'nowrap',
+                                }}
+                                onClick={() => startEditCategory(cat)}
+                                disabled={deleteCategoryMutation.isPending || updateCategoryMutation.isPending}
+                              >
+                                <Icon name="edit" />
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                style={{
+                                  ...styles.buttonDanger,
+                                  opacity: deleteCategoryMutation.isPending ? 0.7 : 1,
+                                  cursor: deleteCategoryMutation.isPending ? 'not-allowed' : 'pointer',
+                                  whiteSpace: 'nowrap',
+                                }}
+                                onClick={() => deleteCategoryMutation.mutate(cat.id)}
+                                disabled={deleteCategoryMutation.isPending || updateCategoryMutation.isPending}
+                              >
+                                {cat.id === deletingCatId ? 'Deleting…' : 'Delete'}
+                              </button>
+                            </div>
                           </>
                         )}
                       </div>

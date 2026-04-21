@@ -48,30 +48,96 @@ router.get('/', async (req, res) => {
   res.json(data)
 })
 
-router.put('/:id', async (req, res) => {
-  const { id } = req.params
-  const { title, description = null } = req.body || {}
+router.put(
+  '/:id',
+  upload.fields([
+    { name: 'before', maxCount: 1 },
+    { name: 'after', maxCount: 1 },
+    { name: 'beforeImage', maxCount: 1 },
+    { name: 'afterImage', maxCount: 1 },
+  ]),
+  async (req, res) => {
+    try {
+      const { id } = req.params
+      const { title, description = null } = req.body || {}
+      const beforeFile = req.files?.before?.[0] || req.files?.beforeImage?.[0]
+      const afterFile = req.files?.after?.[0] || req.files?.afterImage?.[0]
 
-  if (!id) return res.status(400).json({ error: 'id is required' })
-  if (!title || String(title).trim().length === 0) return res.status(400).json({ error: 'title is required' })
+      if (!id) return res.status(400).json({ error: 'id is required' })
+      if (!title || String(title).trim().length === 0) return res.status(400).json({ error: 'title is required' })
 
-  const { data, error } = await supabase
-    .from('portfolio')
-    .update({
-      title: String(title).trim(),
-      description,
-    })
-    .eq('id', id)
-    .select('*')
-    .single()
+      const { data: existing, error: fetchError } = await supabase
+        .from('portfolio')
+        .select('id,before_url,after_url')
+        .eq('id', id)
+        .single()
 
-  if (error) {
-    if (error.code === 'PGRST116') return res.status(404).json({ error: 'Not found' })
-    return res.status(supabaseErrorStatus(error)).json({ error: error.message, code: error.code })
+      if (fetchError) {
+        if (fetchError.code === 'PGRST116') return res.status(404).json({ error: 'Not found' })
+        return res.status(supabaseErrorStatus(fetchError)).json({ error: fetchError.message, code: fetchError.code })
+      }
+
+      let beforeUpload = null
+      let afterUpload = null
+      try {
+        if (beforeFile) {
+          beforeUpload = await uploadToPortfolioBucket(beforeFile, { prefix: `works/${id}/before-` })
+        }
+        if (afterFile) {
+          afterUpload = await uploadToPortfolioBucket(afterFile, { prefix: `works/${id}/after-` })
+        }
+      } catch (e) {
+        const cleanup = []
+        if (beforeUpload?.path) cleanup.push(beforeUpload.path)
+        if (afterUpload?.path) cleanup.push(afterUpload.path)
+        if (cleanup.length) await supabase.storage.from('portfolio').remove(cleanup)
+        throw e
+      }
+
+      const patch = {
+        title: String(title).trim(),
+        description,
+      }
+      if (beforeUpload?.publicUrl) patch.before_url = beforeUpload.publicUrl
+      if (afterUpload?.publicUrl) patch.after_url = afterUpload.publicUrl
+
+      const { data, error } = await supabase
+        .from('portfolio')
+        .update(patch)
+        .eq('id', id)
+        .select('*')
+        .single()
+
+      if (error) {
+        const cleanup = []
+        if (beforeUpload?.path) cleanup.push(beforeUpload.path)
+        if (afterUpload?.path) cleanup.push(afterUpload.path)
+        if (cleanup.length) await supabase.storage.from('portfolio').remove(cleanup)
+        if (error.code === 'PGRST116') return res.status(404).json({ error: 'Not found' })
+        return res.status(supabaseErrorStatus(error)).json({ error: error.message, code: error.code })
+      }
+
+      const oldPaths = []
+      if (beforeUpload?.publicUrl) {
+        const oldBeforePath = getPortfolioPathFromPublicUrl(existing.before_url)
+        if (oldBeforePath) oldPaths.push(oldBeforePath)
+      }
+      if (afterUpload?.publicUrl) {
+        const oldAfterPath = getPortfolioPathFromPublicUrl(existing.after_url)
+        if (oldAfterPath) oldPaths.push(oldAfterPath)
+      }
+      if (oldPaths.length) {
+        const { error: storageError } = await supabase.storage.from('portfolio').remove(oldPaths)
+        if (storageError) return res.status(supabaseErrorStatus(storageError)).json({ error: storageError.message, code: storageError.code })
+      }
+
+      res.json(data)
+    } catch (e) {
+      const status = Number(e?.status || e?.statusCode)
+      res.status(Number.isFinite(status) ? status : 500).json({ error: e?.message || 'Failed to update work' })
+    }
   }
-
-  res.json(data)
-})
+)
 
 router.post(
   '/',

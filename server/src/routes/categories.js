@@ -64,29 +64,72 @@ router.post('/', upload.single('image'), async (req, res) => {
   }
 })
 
-router.put('/:id', async (req, res) => {
-  const { id } = req.params
-  const { name, description = null } = req.body || {}
+router.put('/:id', upload.single('image'), async (req, res) => {
+  try {
+    const { id } = req.params
+    const { name, description = null } = req.body || {}
 
-  if (!id) return res.status(400).json({ error: 'id is required' })
-  if (!name || String(name).trim().length === 0) return res.status(400).json({ error: 'name is required' })
+    if (!id) return res.status(400).json({ error: 'id is required' })
+    if (!name || String(name).trim().length === 0) return res.status(400).json({ error: 'name is required' })
 
-  const { data, error } = await supabase
-    .from('categories')
-    .update({
+    const { data: existing, error: fetchError } = await supabase
+      .from('categories')
+      .select('id,img_categories')
+      .eq('id', id)
+      .single()
+
+    if (fetchError) {
+      if (fetchError.code === 'PGRST116') return res.status(404).json({ error: 'Not found' })
+      return res.status(supabaseErrorStatus(fetchError)).json({ error: fetchError.message, code: fetchError.code })
+    }
+
+    const imageFile = req.file
+    const allowed = new Set(['image/jpeg', 'image/png', 'image/webp'])
+    if (imageFile) {
+      if (imageFile.size > 2 * 1024 * 1024) return res.status(400).json({ error: 'Image must be <= 2MB' })
+      if (!allowed.has(imageFile.mimetype)) return res.status(400).json({ error: 'Only JPG, PNG, and WEBP are allowed' })
+    }
+
+    let uploadedPath = null
+    let publicUrl = null
+    if (imageFile) {
+      const uploaded = await uploadToCategoryImagesBucket(imageFile, { prefix: 'categories/' })
+      uploadedPath = uploaded.path
+      publicUrl = uploaded.publicUrl
+    }
+
+    const patch = {
       name: String(name).trim(),
       description,
-    })
-    .eq('id', id)
-    .select('id,name,description,img_categories')
-    .single()
+    }
+    if (publicUrl) patch.img_categories = publicUrl
 
-  if (error) {
-    if (error.code === 'PGRST116') return res.status(404).json({ error: 'Not found' })
-    return res.status(supabaseErrorStatus(error)).json({ error: error.message, code: error.code })
+    const { data, error } = await supabase
+      .from('categories')
+      .update(patch)
+      .eq('id', id)
+      .select('id,name,description,img_categories')
+      .single()
+
+    if (error) {
+      if (uploadedPath) await supabase.storage.from('category-images').remove([uploadedPath])
+      if (error.code === 'PGRST116') return res.status(404).json({ error: 'Not found' })
+      return res.status(supabaseErrorStatus(error)).json({ error: error.message, code: error.code })
+    }
+
+    if (publicUrl) {
+      const oldPath = getCategoryImagesPathFromPublicUrl(existing.img_categories)
+      if (oldPath) {
+        const { error: storageError } = await supabase.storage.from('category-images').remove([oldPath])
+        if (storageError) return res.status(supabaseErrorStatus(storageError)).json({ error: storageError.message, code: storageError.code })
+      }
+    }
+
+    res.json(data)
+  } catch (e) {
+    const status = Number(e?.status || e?.statusCode)
+    res.status(Number.isFinite(status) ? status : 500).json({ error: e?.message || 'Failed to update category' })
   }
-
-  res.json(data)
 })
 
 router.delete('/:id', async (req, res) => {
